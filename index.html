@@ -1,153 +1,291 @@
 <!doctype html>
 <html lang="hu">
 <head>
-  <!-- Karakterkódolás beállítása -->
   <meta charset="utf-8" />
-
-  <!-- Reszponzív megjelenés mobilon is -->
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Supabase Notes</title>
 
-  <!-- Az oldal címe a böngésző fülön -->
-  <title>Supabase Notes – mini projekt</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Supabase JavaScript könyvtár betöltése CDN-ről -->
-  <!-- FIX 1: The original had a broken </script> tag inside the src URL string -->
+  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-</head>
 
-<body style="font-family: Arial; max-width: 800px; margin: 30px auto;">
-  <!-- Főcím -->
-  <h1>📝 Supabase Notes – mini projekt</h1>
-
-  <!-- Új jegyzet létrehozása -->
-  <h2>Új jegyzet</h2>
-
-  <!-- Űrlap új jegyzet mentéséhez -->
-  <form id="noteForm" style="display:grid; gap:10px;">
-    <!-- Jegyzet címe -->
-    <input id="title" placeholder="Cím" required />
-
-    <!-- Jegyzet szövege -->
-    <textarea id="content" placeholder="Jegyzet szövege" rows="5" required></textarea>
-
-    <!-- Mentés gomb -->
-    <button type="submit">Mentés</button>
-  </form>
-
-  <hr />
-
-  <!-- jegyzetek lista -->
-  <h2>Jegyzetek</h2>
-  <div id="list"></div>
+  <!-- Google Fonts: Syne + DM Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
 
   <script>
-    // A Supabase projekt URL-je
-    const SUPABASE_URL = "https://rjpqxfsvvkukqkpxrihp.supabase.co";
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Syne', 'sans-serif'],
+            mono: ['DM Mono', 'monospace'],
+          },
+          colors: {
+            ink: '#0f0e11',
+            paper: '#f5f2eb',
+            accent: '#e8572a',
+            muted: '#7c7970',
+            border: '#d6d1c8',
+          },
+          keyframes: {
+            fadeUp: {
+              '0%': { opacity: '0', transform: 'translateY(18px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            popIn: {
+              '0%': { opacity: '0', transform: 'scale(0.94)' },
+              '100%': { opacity: '1', transform: 'scale(1)' },
+            },
+          },
+          animation: {
+            fadeUp: 'fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both',
+            popIn: 'popIn 0.3s cubic-bezier(0.22,1,0.36,1) both',
+          },
+        }
+      }
+    }
+  </script>
 
-    // A publikus anon kulcs
-    // Ez frontendben használható, de a service_role kulcsot ide TILOS tenni
-    // Settings -> API Keys -> Legacy anon, service_role API keys
+  <style>
+    body { font-family: 'Syne', sans-serif; background-color: #f5f2eb; }
+    textarea, input { font-family: 'DM Mono', monospace; }
+
+    /* staggered note cards */
+    .note-card:nth-child(1) { animation-delay: 0.05s; }
+    .note-card:nth-child(2) { animation-delay: 0.10s; }
+    .note-card:nth-child(3) { animation-delay: 0.15s; }
+    .note-card:nth-child(4) { animation-delay: 0.20s; }
+    .note-card:nth-child(5) { animation-delay: 0.25s; }
+    .note-card:nth-child(6) { animation-delay: 0.30s; }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #e8572a;
+      box-shadow: 0 0 0 3px rgba(232, 87, 42, 0.15);
+    }
+
+    .btn-primary {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.12);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover::after { opacity: 1; }
+    .btn-primary:active { transform: scale(0.98); }
+  </style>
+</head>
+
+<body class="min-h-screen bg-paper text-ink">
+
+  <!-- Top bar -->
+  <header class="bg-ink text-paper px-6 py-4 flex items-center justify-between animate-fadeUp">
+    <div class="flex items-center gap-3">
+      <span class="text-accent text-2xl leading-none">✦</span>
+      <span class="font-display font-800 text-xl tracking-tight">Notes</span>
+    </div>
+    <span class="font-mono text-xs text-paper/40 tracking-widest uppercase">Supabase</span>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-10 space-y-10">
+
+    <!-- New note form -->
+    <section class="animate-fadeUp" style="animation-delay:0.08s">
+      <div class="flex items-center gap-2 mb-5">
+        <span class="block w-2 h-2 rounded-full bg-accent"></span>
+        <h2 class="font-display font-700 text-lg tracking-tight">Új jegyzet</h2>
+      </div>
+
+      <form id="noteForm" class="bg-white border border-border rounded-2xl p-6 shadow-sm space-y-4">
+        <div>
+          <label class="font-mono text-xs text-muted uppercase tracking-widest block mb-1.5">Cím</label>
+          <input
+            id="title"
+            type="text"
+            placeholder="A jegyzet témája..."
+            required
+            class="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-paper text-ink placeholder:text-muted/60 transition-all duration-200"
+          />
+        </div>
+
+        <div>
+          <label class="font-mono text-xs text-muted uppercase tracking-widest block mb-1.5">Tartalom</label>
+          <textarea
+            id="content"
+            placeholder="Ide írhatod a gondolataidat..."
+            rows="5"
+            required
+            class="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-paper text-ink placeholder:text-muted/60 resize-none transition-all duration-200"
+          ></textarea>
+        </div>
+
+        <div class="flex items-center justify-end pt-1">
+          <button
+            type="submit"
+            id="submitBtn"
+            class="btn-primary bg-accent text-white font-display font-600 text-sm px-6 py-2.5 rounded-xl transition-all duration-200 hover:bg-accent/90 flex items-center gap-2"
+          >
+            <span id="btnText">Mentés</span>
+            <svg id="btnSpinner" class="hidden w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4l-3 3-3-3h4z"></path>
+            </svg>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Notes list -->
+    <section class="animate-fadeUp" style="animation-delay:0.15s">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-2">
+          <span class="block w-2 h-2 rounded-full bg-ink"></span>
+          <h2 class="font-display font-700 text-lg tracking-tight">jegyzetek</h2>
+        </div>
+        <span id="noteCount" class="font-mono text-xs text-muted"></span>
+      </div>
+      <div id="list" class="space-y-3"></div>
+    </section>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+    <div class="bg-ink text-paper font-mono text-sm px-5 py-3 rounded-xl shadow-xl animate-popIn flex items-center gap-2">
+      <span id="toastIcon">✓</span>
+      <span id="toastMsg"></span>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://rjpqxfsvvkukqkpxrihp.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_NGMR-O1mUr55vhQYcuZNMg_xTXlTQVT";
 
-    // Supabase kliens létrehozása
-    // Ezzel tud a weboldal kapcsolódni a Supabase projekthez
-    // FIX 2: Original used invalid syntax: createClient(SUPABASE_URL=" ", SUPABASE_ANON_KEY=" ")
-    //        JavaScript does not support named parameters like that.
-    //        Correct form is: createClient(url, key) — two positional string arguments.
-    const supabaseClient = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY
-    );
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Az űrlap és a jegyzetlista HTML elemének eltárolása változóba
     const form = document.getElementById("noteForm");
     const listEl = document.getElementById("list");
+    const noteCount = document.getElementById("noteCount");
+    const submitBtn = document.getElementById("submitBtn");
+    const btnText = document.getElementById("btnText");
+    const btnSpinner = document.getElementById("btnSpinner");
 
-    // Ez a függvény biztonságosan írja ki a szöveget a HTML-be
-    // Megakadályoz bizonyos rosszindulatú HTML / script beillesztéseket
     function escapeHtml(text) {
       const div = document.createElement("div");
       div.textContent = text ?? "";
       return div.innerHTML;
     }
 
-    // jegyzetek betöltése az adatbázisból
-    async function loadNotes() {
-      // Lekérjük a notes táblából az adatokat
-      const { data, error } = await supabaseClient
-        .from("notes") // melyik táblából dolgozunk
-        .select("id, title, content, created_at") // mely mezőket kérjük le
-        .order("created_at", { ascending: false }); // legújabb legyen elöl
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById("toast");
+      const toastMsg = document.getElementById("toastMsg");
+      const toastIcon = document.getElementById("toastIcon");
+      toastMsg.textContent = msg;
+      toastIcon.textContent = isError ? "✕" : "✓";
+      toast.querySelector("div").style.background = isError ? "#c0392b" : "#0f0e11";
+      toast.classList.remove("hidden");
+      setTimeout(() => toast.classList.add("hidden"), 3000);
+    }
 
-      // Fejlesztői ellenőrzéshez konzolra is kiírjuk
+    function formatDate(isoStr) {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString("hu-HU", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+
+    async function loadNotes() {
+      listEl.innerHTML = `
+        <div class="flex items-center justify-center py-12 text-muted font-mono text-sm gap-2">
+          <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4l-3 3-3-3h4z"></path>
+          </svg>
+          Betöltés...
+        </div>`;
+
+      const { data, error } = await supabaseClient
+        .from("notes")
+        .select("id, title, content, created_at")
+        .order("created_at", { ascending: false });
+
       console.log("SELECT:", data, error);
 
-      // Ha hiba történik a lekérdezéskor
       if (error) {
-        listEl.innerHTML = `<p style="color:red;">SELECT hiba: ${escapeHtml(error.message)}</p>`;
+        listEl.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-700 font-mono text-sm px-5 py-4 rounded-xl">SELECT hiba: ${escapeHtml(error.message)}</div>`;
+        noteCount.textContent = "";
         return;
       }
 
-      // Ha még nincs egyetlen jegyzet sem
       if (!data || data.length === 0) {
-        listEl.innerHTML = `<p>Még nincs egyetlen jegyzet sem.</p>`;
+        listEl.innerHTML = `
+          <div class="text-center py-16 text-muted">
+            <div class="text-4xl mb-3">◦</div>
+            <p class="font-mono text-sm">Még nincs egyetlen jegyzet sem.</p>
+          </div>`;
+        noteCount.textContent = "";
         return;
       }
 
-      // A lekért adatokat HTML kártyákká alakítjuk
-      listEl.innerHTML = data.map(note => `
-        <div style="border:1px solid #ccc; padding:10px; margin:10px 0;">
-          <h3>${escapeHtml(note.title)}</h3>
-          <p>${escapeHtml(note.content)}</p>
-          <small>${escapeHtml(note.created_at)}</small>
+      noteCount.textContent = `${data.length} db`;
+
+      listEl.innerHTML = data.map((note, i) => `
+        <div class="note-card bg-white border border-border rounded-2xl p-5 shadow-sm hover:border-accent/40 hover:shadow-md transition-all duration-200 animate-fadeUp">
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <h3 class="font-display font-700 text-base leading-snug text-ink">${escapeHtml(note.title)}</h3>
+            <span class="font-mono text-xs text-muted/70 whitespace-nowrap pt-0.5">${formatDate(note.created_at)}</span>
+          </div>
+          <p class="font-mono text-sm text-ink/70 leading-relaxed whitespace-pre-wrap">${escapeHtml(note.content)}</p>
         </div>
       `).join("");
     }
 
-    // Eseményfigyelő az űrlap elküldésére
     form.addEventListener("submit", async (e) => {
-      // Megakadályozzuk az alapértelmezett újratöltést
       e.preventDefault();
 
-      // Kiolvassuk az inputmezők értékeit
       const title = document.getElementById("title").value.trim();
       const content = document.getElementById("content").value.trim();
 
-      // Ellenőrzés: egyik mező sem lehet üres
       if (!title || !content) {
-        alert("Mindkét mező kitöltése kötelező.");
+        showToast("Mindkét mező kitöltése kötelező.", true);
         return;
       }
 
-      // Fejlesztői ellenőrzéshez konzolra írjuk
+      // Loading state
+      submitBtn.disabled = true;
+      btnText.textContent = "Mentés...";
+      btnSpinner.classList.remove("hidden");
+
       console.log("Mentés indul:", { title, content });
 
-      // Új rekord beszúrása a notes táblába
       const { data, error } = await supabaseClient
         .from("notes")
-        .insert([{ title, content }]) // új sor beszúrása
-        .select(); // a frissen beszúrt sort visszakérjük
+        .insert([{ title, content }])
+        .select();
 
-      // Konzolra kiírjuk az eredményt
       console.log("INSERT:", data, error);
 
-      // Ha hiba történik mentéskor
+      submitBtn.disabled = false;
+      btnText.textContent = "Mentés";
+      btnSpinner.classList.add("hidden");
+
       if (error) {
-        alert("INSERT hiba: " + error.message);
+        showToast("INSERT hiba: " + error.message, true);
         return;
       }
 
-      // Sikeres mentés esetén
-      alert("Sikeres mentés!");
-
-      // Űrlap törlése
+      showToast("Sikeresen mentve!");
       form.reset();
-
-      // Jegyzetlista újratöltése, hogy az új adat rögtön látszódjon
       loadNotes();
     });
 
-    // Az oldal megnyitásakor rögtön betöltjük a jegyzeteket
     loadNotes();
   </script>
 </body>
